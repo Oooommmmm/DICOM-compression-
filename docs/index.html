@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>IMGE - Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+    <h1>IMGE</h1>
+
+    <div class="info-container">
+        <div class="info-block">
+            <strong>DWT:</strong> Use this for Compressing CT or X-ray images.It preserves Local edges, detail important for diagnosis.Good compression with edge preservation
+        </div>
+        <div class="info-block">
+            <strong>SVD:</strong> Use this for Compressing MRI or large scans.It preserves Global overall structure.Dimensionality reduction and size reduction
+        </div>
+    </div>
+
+    <div class="container">
+        <a href="{{ url_for('method_page', method='dwt') }}" class="box">DWT Method</a>
+        <a href="{{ url_for('method_page', method='svd') }}" class="box">SVD Method</a>
+    </div>
+</body>
+</html>

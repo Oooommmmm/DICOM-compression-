@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>IMGE - {{ method }} Compression</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+    <a href="{{ url_for('home') }}" class="back-link">&larr; Back to Home</a>
+    <h1>{{ method }} Compression</h1>
+    <form method="post" enctype="multipart/form-data">
+        <label for="image_file">Select Image (grayscale):</label>
+        <input type="file" id="image_file" name="image_file" accept="image/*" onchange="loadImage(event)" required /><br/>
+        <label>Select ROI blocks by clicking on the image:</label><br/>
+        <canvas id="imageCanvas" style="border:1px solid #333; margin-top: 10px; max-width: 600px; width: 100%; height: auto;"></canvas>
+        <textarea id="roi_blocks" name="roi_blocks" readonly placeholder="Selected ROI blocks (row,col) appear here..." style="width:100%; height:80px; margin-top:10px;">{{ roi_data }}</textarea>
+        {% if method == 'DWT' %}
+          <label for="threshold">Threshold:</label>
+          <input type="number" id="threshold" name="threshold" value="10">
+        {% elif method == 'SVD' %}
+          <label for="k">Singular Values to Keep (k):</label>
+          <input type="number" id="k" name="k" value="20">
+        {% endif %}
+        <label for="jpeg_quality">JPEG Quality for Non-ROI Blocks (1-100):</label>
+        <input type="number" id="jpeg_quality" name="jpeg_quality" value="30">
+        <button type="submit" style="margin-top:15px;">Submit for Compression</button>
+    </form>
+    <script>
+const canvas = document.getElementById('imageCanvas');
+const ctx = canvas.getContext('2d');
+const BLOCK_SIZE = 450;
+let img = new Image();
+let selectedBlocks = new Set();
+let scale = 1;
+function loadImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        img.onload = function() {
+            scale = img.width > 600 ? 600 / img.width : 1;
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            drawImageAndGrid();
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+function drawImageAndGrid() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const numBlocksX = Math.floor(img.width / BLOCK_SIZE);
+    const numBlocksY = Math.floor(img.height / BLOCK_SIZE);
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    for(let i=0; i<=numBlocksX; i++){
+        let x = i * BLOCK_SIZE * scale;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+    for(let j=0; j<=numBlocksY; j++){
+        let y = j * BLOCK_SIZE * scale;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(0,255,0,0.3)';
+    selectedBlocks.forEach(block => {
+        const [row, col] = block.split(',').map(Number);
+        const x = col * BLOCK_SIZE * scale;
+        const y = row * BLOCK_SIZE * scale;
+        ctx.fillRect(x, y, BLOCK_SIZE * scale, BLOCK_SIZE * scale);
+    });
+}
+canvas.addEventListener('click', function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const col = Math.floor(clickX / (BLOCK_SIZE * scale));
+    const row = Math.floor(clickY / (BLOCK_SIZE * scale));
+    const blockKey = `${row},${col}`;
+    if (selectedBlocks.has(blockKey)) {
+        selectedBlocks.delete(blockKey);
+    } else {
+        selectedBlocks.add(blockKey);
+    }
+    drawImageAndGrid();
+    document.getElementById('roi_blocks').value = Array.from(selectedBlocks).join(' ');
+});
+    </script>
+</body>
+</html>
