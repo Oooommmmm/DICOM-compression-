@@ -7,7 +7,11 @@ from scipy.linalg import svd
 import zipfile
 import base64
 
+
 app = Flask(__name__)
+
+app = Flask(__name__, template_folder='docs')
+
 app.secret_key = 'your_secret_key_here'
 
 UPLOAD_FOLDER = 'uploads'
@@ -135,7 +139,7 @@ def pil_image_to_base64(pil_img, format="PNG"):
 
 @app.route("/")
 def home():
-    return render_template("home.html")
+    return render_template("index.html")
 
 
 @app.route("/<method>", methods=["GET", "POST"])
