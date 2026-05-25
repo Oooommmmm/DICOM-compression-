@@ -116,9 +116,9 @@
             </tr>
         </table>
 
-        <a href="{{ url_for('download_zip', zip_filename=zip_filename) }}" class="download-link" download>
-            Download Compressed ZIP
-        </a>
+        <a href="data:application/zip;base64,{{ zip_b64 }}" download="{{ zip_filename }}" class="btn btn-success">
+    Download Compressed Archive
+</a>
 
         <a href="{{ url_for('home') }}" class="back-link">&larr; Back to Home</a>
     </div>
