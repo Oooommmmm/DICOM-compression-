@@ -7,20 +7,12 @@ from scipy.linalg import svd
 import zipfile
 import base64
 
-
 app = Flask(__name__)
-
-app = Flask(__name__, template_folder='docs')
-
+# Pointing template_folder to the repository root directory matching your Vercel configurations
+app.template_folder = 'docs'
 app.secret_key = 'your_secret_key_here'
 
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'outputs'
 BLOCK_SIZE = 450
-
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-
 
 def haar_wavelet_transform_2d(image):
     rows, cols = image.shape
@@ -38,7 +30,6 @@ def haar_wavelet_transform_2d(image):
             temp[(rows//2)+(i//2)] = (output[i, c] - output[i+1, c]) / 2
         output[:rows, c] = temp
     return output
-
 
 def inverse_haar_wavelet_transform_2d(coeffs):
     rows, cols = coeffs.shape
@@ -59,13 +50,11 @@ def inverse_haar_wavelet_transform_2d(coeffs):
         output[r, :cols] = temp
     return output
 
-
 def compress_block_svd(block, k=20):
     U, S, VT = svd(block, full_matrices=False)
     S[k:] = 0
     compressed = np.dot(U, np.dot(np.diag(S), VT))
     return np.clip(compressed, 0, 255).astype(np.uint8)
-
 
 def compress_block_dwt(block, threshold=10):
     coeffs = haar_wavelet_transform_2d(block)
@@ -78,7 +67,6 @@ def compress_block_dwt(block, threshold=10):
     compressed = inverse_haar_wavelet_transform_2d(coeffs)
     return np.clip(compressed, 0, 255).astype(np.uint8)
 
-
 def lossy_compress_block_jpeg(block, quality=30):
     pil_img = Image.fromarray(block)
     with io.BytesIO() as buff:
@@ -86,7 +74,6 @@ def lossy_compress_block_jpeg(block, quality=30):
         buff.seek(0)
         compressed_img = Image.open(buff).convert("L")
         return np.array(compressed_img)
-
 
 def block_wise_compress(image_np, roi_blocks, method, k=20, threshold=10, jpeg_quality=30):
     h, w = image_np.shape
@@ -107,7 +94,6 @@ def block_wise_compress(image_np, roi_blocks, method, k=20, threshold=10, jpeg_q
             compressed_img[y : y + BLOCK_SIZE, x : x + BLOCK_SIZE] = compressed_block
     return compressed_img
 
-
 def draw_roi_overlay_on_compressed(compressed_np, roi_blocks):
     img_pil = Image.fromarray(compressed_np).convert("RGB")
     draw = ImageDraw.Draw(img_pil, "RGBA")
@@ -122,7 +108,6 @@ def draw_roi_overlay_on_compressed(compressed_np, roi_blocks):
         x1 = col * BLOCK_SIZE
         draw.line([(x1, 0), (x1, h)], fill="blue", width=2)
 
-
     for row, col in roi_blocks:
         y, x = row * BLOCK_SIZE, col * BLOCK_SIZE
         draw.rectangle([x, y, x + BLOCK_SIZE, y + BLOCK_SIZE], outline=(255, 0, 0, 255), width=6)
@@ -130,17 +115,14 @@ def draw_roi_overlay_on_compressed(compressed_np, roi_blocks):
 
     return img_pil
 
-
 def pil_image_to_base64(pil_img, format="PNG"):
     buff = io.BytesIO()
     pil_img.save(buff, format=format)
     return base64.b64encode(buff.getvalue()).decode("utf-8")
 
-
 @app.route("/")
 def home():
     return render_template("index.html")
-
 
 @app.route("/<method>", methods=["GET", "POST"])
 def method_page(method):
@@ -185,19 +167,26 @@ def method_page(method):
         compressed_roi_img = draw_roi_overlay_on_compressed(compressed_np, roi_blocks)
         compressed_roi_b64 = pil_image_to_base64(compressed_roi_img, format="PNG")
 
+        # FIX: Generate compressed JPG bytes in-memory without saving to a folder path
         compressed_img = Image.fromarray(compressed_np)
-        compressed_jpeg_path = os.path.join(OUTPUT_FOLDER, f"compressed_{method}.jpg")
-        compressed_img.save(compressed_jpeg_path, "JPEG", quality=85, optimize=True)
+        img_io = io.BytesIO()
+        compressed_img.save(img_io, "JPEG", quality=85, optimize=True)
+        img_io.seek(0)
+        compressed_size_kb = len(img_io.getvalue()) // 1024
 
-        compressed_size_kb = os.path.getsize(compressed_jpeg_path) // 1024
-
-        zip_filename = f"compressed_{method}.zip"
-        with zipfile.ZipFile(os.path.join(OUTPUT_FOLDER, zip_filename), "w") as zipf:
-            zipf.write(compressed_jpeg_path, arcname=f"compressed_{method}.jpg")
+        # FIX: Construct the ZIP archive straight into memory stream 
+        zip_io = io.BytesIO()
+        with zipfile.ZipFile(zip_io, "w") as zipf:
+            zipf.writestr(f"compressed_{method}.jpg", img_io.getvalue())
+        zip_io.seek(0)
+        
+        # Convert ZIP payload to Base64 data URI to allow instant downloads on the client-side
+        zip_b64 = base64.b64encode(zip_io.getvalue()).decode("utf-8")
 
         return render_template(
             "success.html",
-            zip_filename=zip_filename,
+            zip_b64=zip_b64,
+            zip_filename=f"compressed_{method}.zip",
             original_size_kb=original_size_kb,
             compressed_size_kb=compressed_size_kb,
             orig_b64=orig_b64,
@@ -205,15 +194,6 @@ def method_page(method):
         )
 
     return render_template("method.html", method=method.upper(), roi_data="")
-
-
-@app.route("/download_zip/<zip_filename>")
-def download_zip(zip_filename):
-    zip_path = os.path.join(OUTPUT_FOLDER, zip_filename)
-    if os.path.exists(zip_path):
-        return send_file(zip_path, as_attachment=True)
-    return "File not found.", 404
-
 
 if __name__ == "__main__":
     app.run(debug=True)
